@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-07-15)
+
+### Bug Fixes
+
+- **dockview**: Harden panel replay and layout restore
+  ([`4f74a4a`](https://github.com/Kitware/trame-dockview/commit/4f74a4ab4f88440ddf702bd36acde940d617c3c7))
+
+### Features
+
+- **dockview**: Add layout persistence and panel lifecycle events
+  ([`4f131d9`](https://github.com/Kitware/trame-dockview/commit/4f131d9bce76897dddbaa852ee18d3a896ce0733))
+
+
 ## v1.3.2 (2026-07-15)
 
 ### Bug Fixes
