@@ -161,6 +161,20 @@ class DockView(HtmlElement):
         self.server.js_call(self.__ref, "setPanelTitle", id, title)
 
     def move_panel_to(self, id, position):
+        """
+        Move an existing panel within the layout.
+
+        Args:
+            id (string):
+                Unique identifier for that panel.
+            position (dict):
+                Same shape as add_panel's position add-on:
+                ``{"referencePanel": <panel id>, "direction": <dir>}``.
+                ``direction`` accepts add_panel's values ("within", "left",
+                "right", "above", "below"); "within" (the default) stacks the
+                panel as a tab in the reference panel's group. Without a
+                referencePanel the move is relative to the panel's own group.
+        """
         self.server.js_call(self.__ref, "movePanelTo", id, position)
 
     def restore_layout(self, layout):
