@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.3.1 (2026-07-15)
+
+### Bug Fixes
+
+- **dockview**: Expose defaultRenderer prop
+  ([`1d64763`](https://github.com/Kitware/trame-dockview/commit/1d647637b914b711f7fd5403cf9329c3e844bdbe))
+
+### Chores
+
+- Update pre-commit
+  ([`b718667`](https://github.com/Kitware/trame-dockview/commit/b71866769ffd4ccb66ff6d49eccf6d60ed1eb0eb))
+
+- Update workflow
+  ([`2f58c97`](https://github.com/Kitware/trame-dockview/commit/2f58c97f1732902c0e1163fed7af6e637b414bde))
+
+
 ## v1.3.0 (2025-12-01)
 
 ### Bug Fixes
