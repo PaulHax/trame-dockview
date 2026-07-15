@@ -1,0 +1,133 @@
+name: Build GitHub Release Wheel
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or update
+        required: true
+        type: string
+      release_name:
+        description: Release title; defaults to the tag
+        required: false
+        type: string
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches:
+      - github-release-wheel
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: 3
+  BRANCH_RELEASE_TAG: github-release-wheel-latest
+
+jobs:
+  build-release-wheel:
+    name: Build and Upload Wheel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set Up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vue-components/package-lock.json
+
+      - name: Build Vue Components
+        run: |
+          cd vue-components
+          npm ci
+          npm run build
+
+      - name: Set Up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Build Wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Smoke Test Wheel
+        run: |
+          python -m pip install dist/*.whl
+          python - <<'PY'
+          from pathlib import Path
+          import trame_dockview.module as module
+
+          serve = Path(module.serve_path)
+          assert (serve / "style.css").is_file()
+          assert (serve / "trame_dockview.umd.js").is_file()
+          PY
+
+      - name: Upload Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trame-dockview-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+
+      - name: Update Branch Release Tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/github-release-wheel'
+        run: |
+          git tag --force "$BRANCH_RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/${BRANCH_RELEASE_TAG}" --force
+
+      - name: Upload Wheel to GitHub Release
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/github-release-wheel'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          release_tag="${GITHUB_REF_NAME}"
+          release_name="${GITHUB_REF_NAME}"
+          prerelease_args=()
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            release_tag="${INPUT_TAG}"
+            release_name="${INPUT_RELEASE_NAME:-$INPUT_TAG}"
+            if [ "${INPUT_PRERELEASE}" = "true" ]; then
+              prerelease_args=(--prerelease)
+            fi
+          elif [ "${GITHUB_REF}" = "refs/heads/github-release-wheel" ]; then
+            release_tag="${BRANCH_RELEASE_TAG}"
+            release_name="${BRANCH_RELEASE_TAG}"
+            prerelease_args=(--prerelease)
+          fi
+
+          release_notes="Built from ${GITHUB_SHA}."
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            if [ "${release_tag}" = "${BRANCH_RELEASE_TAG}" ]; then
+              gh release edit "$release_tag" \
+                --title "$release_name" \
+                --notes "$release_notes" \
+                "${prerelease_args[@]}"
+            fi
+            gh release upload "$release_tag" dist/*.whl --clobber
+          else
+            gh release create "$release_tag" dist/*.whl \
+              --target "$GITHUB_SHA" \
+              --title "$release_name" \
+              --notes "$release_notes" \
+              "${prerelease_args[@]}"
+          fi
