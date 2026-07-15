@@ -67,9 +67,16 @@ class DockView(HtmlElement):
       active_panel (event):
         Event emitted when a panel is activated.
         The $event will be equal to the id used when creating the panel.
-      removePanel (event):
+      remove_panel (event):
         Event emitted when a panel is removed.
         The $event will be equal to the panel id provided at the panel creation.
+      layout_changed (event):
+        Event emitted (debounced) whenever the layout changes.
+        The $event will be equal to the serialized layout (api.toJSON()),
+        which can be fed back to restore_layout().
+      panel_visibility (event):
+        Event emitted when a panel becomes visible or hidden.
+        The $event will be equal to { id, visible }.
     """
 
     _next_id = 0
@@ -100,6 +107,8 @@ class DockView(HtmlElement):
             "ready",
             ("active_panel", "activePanel"),
             ("remove_panel", "removePanel"),
+            ("layout_changed", "layoutChanged"),
+            ("panel_visibility", "panelVisibility"),
         ]
 
         self.__ref = kwargs.get("ref")
@@ -152,4 +161,29 @@ class DockView(HtmlElement):
         self.server.js_call(self.__ref, "setPanelTitle", id, title)
 
     def move_panel_to(self, id, position):
+        """
+        Move an existing panel within the layout.
+
+        Args:
+            id (string):
+                Unique identifier for that panel.
+            position (dict):
+                Same shape as add_panel's position add-on:
+                ``{"referencePanel": <panel id>, "direction": <dir>}``.
+                ``direction`` accepts add_panel's values ("within", "left",
+                "right", "above", "below"); "within" (the default) stacks the
+                panel as a tab in the reference panel's group. Without a
+                referencePanel the move is relative to the panel's own group.
+        """
         self.server.js_call(self.__ref, "movePanelTo", id, position)
+
+    def restore_layout(self, layout):
+        """
+        Restore a layout previously captured via the layout_changed event.
+
+        Args:
+            layout (dict):
+                Serialized layout as provided by the layout_changed event
+                (api.toJSON()).
+        """
+        self.server.js_call(self.__ref, "restoreLayout", layout)
