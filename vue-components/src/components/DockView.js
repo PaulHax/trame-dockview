@@ -147,6 +147,7 @@ export default {
   },
   setup(props, { emit }) {
     let api = null;
+    let restoring = false;
     const disposables = [];
     const panelDisposables = new Map();
     const pendingCalls = [];
@@ -202,6 +203,9 @@ export default {
       // Listen to active panel to emit event
       disposables.push(
         api.onDidActivePanelChange((e) => {
+          if (restoring) {
+            return;
+          }
           emit("activePanel", e?.id);
         }),
       );
@@ -209,6 +213,9 @@ export default {
         api.onDidRemovePanel((e) => {
           panelDisposables.get(e?.id)?.dispose();
           panelDisposables.delete(e?.id);
+          if (restoring) {
+            return;
+          }
           emit("removePanel", e?.id);
         }),
       );
@@ -238,13 +245,36 @@ export default {
 
     function addPanel(id, title, templateName, addOn = {}) {
       whenReady(() => {
-        api.addPanel({
+        // Idempotent: the server replays its open-panel set on every `ready`
+        // (fresh client, browser refresh); a client that already has the
+        // panel must not throw on the duplicate id.
+        if (api.getPanel(id)) {
+          return;
+        }
+        const spec = {
           id,
           title,
           component: "DockPanel",
           params: { templateName },
           ...addOn,
-        });
+        };
+        try {
+          api.addPanel(spec);
+        } catch (error) {
+          // A stale position (e.g. its referencePanel was closed after the
+          // layout was recorded) throws in dockview-core. One bad position
+          // must not abort the add — and with it the rest of the replayed
+          // panel set — so retry with default placement instead.
+          if (!spec.position) {
+            throw error;
+          }
+          console.warn(
+            "trame-dockview: addPanel position rejected, adding unpositioned",
+            error,
+          );
+          delete spec.position;
+          api.addPanel(spec);
+        }
       });
     }
     // v-bind
@@ -283,20 +313,82 @@ export default {
       });
     }
 
+    // addPanel-style directions -> dockview-core moveTo positions.
+    const MOVE_POSITIONS = {
+      within: "center",
+      center: "center",
+      left: "left",
+      right: "right",
+      above: "top",
+      top: "top",
+      below: "bottom",
+      bottom: "bottom",
+    };
+
     function movePanelTo(panelId, position) {
       whenReady(() => {
         const panel = api.getPanel(panelId);
-        panel?.api?.moveTo({
-          position,
-          group: panel.api._group,
+        if (!panel) {
+          return;
+        }
+        // position mirrors addPanel's shape: { referencePanel?, direction? }.
+        // Without a referencePanel the move is relative to the panel's own
+        // group; direction "within" (default) stacks as a tab in the target.
+        const spec = position || {};
+        const reference = spec.referencePanel
+          ? api.getPanel(spec.referencePanel)
+          : null;
+        const group = reference ? reference.api.group : panel.api.group;
+        panel.api.moveTo({
+          group,
+          position: MOVE_POSITIONS[spec.direction] || "center",
         });
       });
     }
 
+    function mountRestoredPanels(restoredActivePanel) {
+      // fromJSON only mounts active tabs. Cycling each group once forces
+      // always-rendered content to initialize, but changes active state.
+      api.groups.forEach((group) => {
+        const active = group.activePanel;
+        group.panels.forEach((panel) => panel.api.setActive());
+        if (active) {
+          active.api.setActive();
+        }
+      });
+      if (restoredActivePanel && api.getPanel(restoredActivePanel.id)) {
+        restoredActivePanel.api.setActive();
+      }
+      return api.activePanel?.id;
+    }
+
+    const isObject = (value) => value !== null && typeof value === "object";
+
     function restoreLayout(layout) {
       whenReady(() => {
-        api.fromJSON(layout);
-        emit("activePanel", api.activePanel?.id);
+        // fromJSON clears the dock before validating its input, so reject
+        // anything that is not a serialized layout instead of wiping panels.
+        if (
+          !isObject(layout) ||
+          !isObject(layout.grid) ||
+          !isObject(layout.panels)
+        ) {
+          console.warn("trame-dockview: ignoring invalid layout", layout);
+          return;
+        }
+        // Suppress removePanel/activePanel emits caused by fromJSON's
+        // internal clear() so the server does not tear down panel state
+        // for panels that are about to be restored.
+        restoring = true;
+        try {
+          api.fromJSON(layout);
+          const activePanelId = mountRestoredPanels(api.activePanel);
+          restoring = false;
+          emit("activePanel", activePanelId);
+        } catch (error) {
+          restoring = false;
+          console.error("trame-dockview: failed to restore layout", error);
+        }
       });
     }
 
