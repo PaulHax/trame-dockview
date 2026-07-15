@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.2 (2026-07-15)
+
+### Bug Fixes
+
+- Web versioning
+  ([`366ad2c`](https://github.com/Kitware/trame-dockview/commit/366ad2cf66a23c30280406ce224ae4982a156c03))
+
+
 ## v1.3.1 (2026-07-15)
 
 ### Bug Fixes
