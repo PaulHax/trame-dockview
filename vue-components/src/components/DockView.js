@@ -45,6 +45,8 @@ const THEMES = {
   },
 };
 
+const LAYOUT_CHANGE_DEBOUNCE = 500;
+
 function templateToComponent(name) {
   const safeName = name
     .toLowerCase()
@@ -70,7 +72,13 @@ const PROP_NAMES = [
 ];
 
 export default {
-  emits: ["ready", "activePanel", "removePanel"],
+  emits: [
+    "ready",
+    "activePanel",
+    "removePanel",
+    "layoutChanged",
+    "panelVisibility",
+  ],
   props: {
     theme: {
       default: "Dracula",
@@ -140,13 +148,53 @@ export default {
   setup(props, { emit }) {
     let api = null;
     const disposables = [];
+    const panelDisposables = new Map();
+    const pendingCalls = [];
     const theme = computed(() => THEMES[props.theme.toLowerCase()]);
 
     onBeforeUnmount(() => {
+      panelDisposables.forEach((disposable) => disposable.dispose());
+      panelDisposables.clear();
       while (disposables.length) {
         disposables.pop().dispose();
       }
     });
+
+    // Queue calls made before the dockview api is ready and flush them in order
+    function whenReady(fn) {
+      if (api) {
+        fn();
+      } else {
+        pendingCalls.push(fn);
+      }
+    }
+
+    function debounce(fn, delay) {
+      let timeout = null;
+      const debounced = (...args) => {
+        window.clearTimeout(timeout);
+        timeout = window.setTimeout(() => fn(...args), delay);
+      };
+      debounced.cancel = () => window.clearTimeout(timeout);
+      return debounced;
+    }
+
+    function watchPanelVisibility(panel) {
+      const panelId = panel?.id;
+      if (!panelId || !panel?.api?.onDidVisibilityChange) {
+        return;
+      }
+      panelDisposables.get(panelId)?.dispose();
+      panelDisposables.set(
+        panelId,
+        panel.api.onDidVisibilityChange(({ isVisible }) => {
+          emit("panelVisibility", { id: panelId, visible: isVisible });
+        }),
+      );
+      // Seed the server-side visibility map with the panel's current state,
+      // covering panels added inactive or restored hidden via fromJSON.
+      emit("panelVisibility", { id: panelId, visible: panel.api.isVisible });
+    }
 
     function onReady(event) {
       api = event.api;
@@ -159,21 +207,44 @@ export default {
       );
       disposables.push(
         api.onDidRemovePanel((e) => {
-          console.log("onDidRemovePanel", e);
+          panelDisposables.get(e?.id)?.dispose();
+          panelDisposables.delete(e?.id);
           emit("removePanel", e?.id);
         }),
       );
 
+      // Track visibility of every panel, including panels restored via fromJSON
+      disposables.push(api.onDidAddPanel(watchPanelVisibility));
+
+      // Emit debounced layout snapshots for persistence
+      const emitLayout = debounce(
+        () => emit("layoutChanged", api.toJSON()),
+        LAYOUT_CHANGE_DEBOUNCE,
+      );
+      disposables.push(api.onDidLayoutChange(emitLayout));
+      disposables.push({ dispose: emitLayout.cancel });
+
       emit("ready");
+
+      while (pendingCalls.length) {
+        const call = pendingCalls.shift();
+        try {
+          call();
+        } catch (error) {
+          console.error("trame-dockview: queued call failed", error);
+        }
+      }
     }
 
     function addPanel(id, title, templateName, addOn = {}) {
-      api.addPanel({
-        id,
-        title,
-        component: "DockPanel",
-        params: { templateName },
-        ...addOn,
+      whenReady(() => {
+        api.addPanel({
+          id,
+          title,
+          component: "DockPanel",
+          params: { templateName },
+          ...addOn,
+        });
       });
     }
     // v-bind
@@ -195,23 +266,37 @@ export default {
     });
 
     function removePanel(panelId) {
-      api.getPanel(panelId)?.api?.close();
+      whenReady(() => {
+        api.getPanel(panelId)?.api?.close();
+      });
     }
 
     function activePanel(panelId) {
-      api.getPanel(panelId)?.api?.setActive();
+      whenReady(() => {
+        api.getPanel(panelId)?.api?.setActive();
+      });
     }
 
     function setPanelTitle(panelId, title) {
-      api.getPanel(panelId)?.api?.setTitle(title);
+      whenReady(() => {
+        api.getPanel(panelId)?.api?.setTitle(title);
+      });
     }
 
     function movePanelTo(panelId, position) {
-      const panel = api.getPanel(panelId);
+      whenReady(() => {
+        const panel = api.getPanel(panelId);
+        panel?.api?.moveTo({
+          position,
+          group: panel.api._group,
+        });
+      });
+    }
 
-      panel?.api?.moveTo({
-        position,
-        group: panel.api._group,
+    function restoreLayout(layout) {
+      whenReady(() => {
+        api.fromJSON(layout);
+        emit("activePanel", api.activePanel?.id);
       });
     }
 
@@ -224,8 +309,9 @@ export default {
       activePanel,
       setPanelTitle,
       movePanelTo,
+      restoreLayout,
     };
   },
   template:
-    '<div style="position:relative;width:100%;height:100%;"><dockview-vue style="position:absolute;width:100%;height:100%" :theme="theme" @ready="onReady" :defaultRenderer="defaultRenderer" /></div>',
+    '<div style="position:relative;width:100%;height:100%;"><dockview-vue style="position:absolute;width:100%;height:100%" :theme="theme" v-bind="bind" @ready="onReady" /></div>',
 };
