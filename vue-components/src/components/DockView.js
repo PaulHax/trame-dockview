@@ -227,5 +227,5 @@ export default {
     };
   },
   template:
-    '<div style="position:relative;width:100%;height:100%;"><dockview-vue style="position:absolute;width:100%;height:100%" :theme="theme" @ready="onReady" /></div>',
+    '<div style="position:relative;width:100%;height:100%;"><dockview-vue style="position:absolute;width:100%;height:100%" :theme="theme" @ready="onReady" :defaultRenderer="defaultRenderer" /></div>',
 };
