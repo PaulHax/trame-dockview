@@ -25,7 +25,6 @@ THEMES = [
     "Dracula",
     "Light",
     "LightSpaced",
-    "Replit",
     "VisualStudio",
 ]
 

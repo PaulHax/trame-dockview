@@ -24,7 +24,7 @@ class DockView(HtmlElement):
         Theme to use for the layout manager.
         Possible values are: [
             Abyss, AbyssSpaced, Dark, Dracula, Light,
-            LightSpaced, Replit, VisualStudio,
+            LightSpaced, VisualStudio,
         ]
       components (dict):
         Map of components to replate using template names.

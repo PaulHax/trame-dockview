@@ -21,6 +21,7 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = ["pre-commit", "ruff", "pytest >=6", "pytest-cov >=3", "nox"]
+e2e = ["trame>=3.13", "trame-vuetify>=3.2"]
 
 [build-system]
 requires = ["hatchling"]
