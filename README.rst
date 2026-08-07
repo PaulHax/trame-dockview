@@ -57,7 +57,6 @@ First you need to import the **dockview** module so you can instantiate the layo
         "Dracula",
         "Light",
         "LightSpaced",
-        "Replit",
         "VisualStudio",
     ]
 
@@ -160,5 +159,5 @@ Share your experience `with a testimonial <https://github.com/Kitware/trame/issu
 JavaScript dependency
 -----------------------------------------------------------
 
-This Python package bundle the following **dockview-vue@4.4.0** library.
+This Python package bundles the following **dockview-vue@7.0.4** library.
 If you would like us to upgrade its dependency or expose more capabilities provided by the underlying library, `please reach out <https://www.kitware.com/trame/>`_.

@@ -18,10 +18,10 @@
     "semantic-release": "semantic-release"
   },
   "dependencies": {
-    "dockview-vue": "^4.4.0"
+    "dockview-vue": "^7.0.4"
   },
   "peerDependencies": {
-    "vue": "^2.7.0 || >=3.0.0"
+    "vue": "^3.4.0"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.1.4",
@@ -31,7 +31,7 @@
     "prettier": "^2.7.1",
     "semantic-release": "19.0.2",
     "vite": "^4.1.0",
-    "vue": "^3.0.0"
+    "vue": "^3.4.0"
   },
   "files": [
     "dist/*",

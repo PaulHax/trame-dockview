@@ -20,7 +20,17 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit", "ruff", "pytest >=6", "pytest-cov >=3", "nox"]
+dev = [
+    "pre-commit",
+    "ruff",
+    "pytest >=6",
+    "pytest-asyncio",
+    "pytest-playwright",
+    "pytest-cov >=3",
+    "nox",
+    "trame>=3.13",
+    "trame-vuetify>=3.2",
+]
 
 [build-system]
 requires = ["hatchling"]

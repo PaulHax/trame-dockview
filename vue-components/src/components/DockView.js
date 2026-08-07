@@ -24,11 +24,6 @@ const THEMES = {
     name: "dracula",
     className: "dockview-theme-dracula",
   },
-  replit: {
-    name: "replit",
-    className: "dockview-theme-replit",
-    gap: 10,
-  },
   abyssspaced: {
     name: "abyssSpaced",
     className: "dockview-theme-abyss-spaced",
@@ -147,7 +142,7 @@ export default {
   },
   setup(props, { emit }) {
     let api = null;
-    let restoring = false;
+    let layoutMutation = null;
     const disposables = [];
     const panelDisposables = new Map();
     const pendingCalls = [];
@@ -200,20 +195,34 @@ export default {
     function onReady(event) {
       api = event.api;
 
+      // A layout load removes and re-adds panels internally. Track its
+      // transaction so temporary lifecycle events cannot tear down
+      // server-owned views.
+      disposables.push(
+        api.onWillMutateLayout((mutation) => {
+          layoutMutation = mutation;
+        }),
+      );
+      disposables.push(
+        api.onDidMutateLayout(() => {
+          layoutMutation = null;
+        }),
+      );
+
       // Listen to active panel to emit event
       disposables.push(
         api.onDidActivePanelChange((e) => {
-          if (restoring) {
+          if (layoutMutation?.kind === "load") {
             return;
           }
-          emit("activePanel", e?.id);
+          emit("activePanel", e.panel?.id);
         }),
       );
       disposables.push(
         api.onDidRemovePanel((e) => {
           panelDisposables.get(e?.id)?.dispose();
           panelDisposables.delete(e?.id);
-          if (restoring) {
+          if (layoutMutation?.kind === "load") {
             return;
           }
           emit("removePanel", e?.id);
@@ -262,7 +271,7 @@ export default {
           api.addPanel(spec);
         } catch (error) {
           // A stale position (e.g. its referencePanel was closed after the
-          // layout was recorded) throws in dockview-core. One bad position
+          // layout was recorded) throws in dockview. One bad position
           // must not abort the add — and with it the rest of the replayed
           // panel set — so retry with default placement instead.
           if (!spec.position) {
@@ -313,7 +322,7 @@ export default {
       });
     }
 
-    // addPanel-style directions -> dockview-core moveTo positions.
+    // addPanel-style directions -> dockview moveTo positions.
     const MOVE_POSITIONS = {
       within: "center",
       center: "center",
@@ -346,22 +355,6 @@ export default {
       });
     }
 
-    function mountRestoredPanels(restoredActivePanel) {
-      // fromJSON only mounts active tabs. Cycling each group once forces
-      // always-rendered content to initialize, but changes active state.
-      api.groups.forEach((group) => {
-        const active = group.activePanel;
-        group.panels.forEach((panel) => panel.api.setActive());
-        if (active) {
-          active.api.setActive();
-        }
-      });
-      if (restoredActivePanel && api.getPanel(restoredActivePanel.id)) {
-        restoredActivePanel.api.setActive();
-      }
-      return api.activePanel?.id;
-    }
-
     const isObject = (value) => value !== null && typeof value === "object";
 
     function restoreLayout(layout) {
@@ -376,17 +369,12 @@ export default {
           console.warn("trame-dockview: ignoring invalid layout", layout);
           return;
         }
-        // Suppress removePanel/activePanel emits caused by fromJSON's
-        // internal clear() so the server does not tear down panel state
-        // for panels that are about to be restored.
-        restoring = true;
         try {
-          api.fromJSON(layout);
-          const activePanelId = mountRestoredPanels(api.activePanel);
-          restoring = false;
-          emit("activePanel", activePanelId);
+          // Preserve live Vue component instances and their state across the
+          // layout restore.
+          api.fromJSON(layout, { reuseExistingPanels: true });
+          emit("activePanel", api.activePanel?.id);
         } catch (error) {
-          restoring = false;
           console.error("trame-dockview: failed to restore layout", error);
         }
       });
